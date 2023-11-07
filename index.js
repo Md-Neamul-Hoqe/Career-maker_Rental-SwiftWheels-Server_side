@@ -89,6 +89,24 @@ async function run() {
             return res.send(result)
         })
 
+        /* find Popular services */
+        app.get('/api/v1/popular-services', async (req, res) => {
+            const { type } = req.query;
+            // console.log(id, type);
+
+            if (type === "bikes") {
+                const result = await bikeCollection.find().limit(4).toArray();
+                // console.log(result);
+                return res.send(result)
+            }
+            const result = await carCollection.find().limit(4).toArray();
+
+            // console.log(result);
+
+            /* if not matched send empty array */
+            return res.send(result)
+        })
+
         /* Add / Host a service */
         app.post('/api/v1/create-service', async (req, res) => {
             const service = req.body;
