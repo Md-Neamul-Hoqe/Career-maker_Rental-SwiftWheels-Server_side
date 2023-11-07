@@ -49,7 +49,9 @@ async function run() {
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
 
         /* Get all cars */
-        app.get('api/v1/cars', async (req, res) => {
+        app.get('/api/v1/cars', async (req, res) => {
+            console.log('carCollection get hilted');
+
             const result = await carCollection.find().toArray();
 
             console.log(result);
@@ -58,7 +60,7 @@ async function run() {
         })
 
         /* Get all bikes */
-        app.get('api/v1/bikes', async (req, res) => {
+        app.get('/api/v1/bikes', async (req, res) => {
             const result = await bikeCollection.find().toArray();
 
             console.log(result);
@@ -70,8 +72,8 @@ async function run() {
 
 
             const service = req.body;
-            
-            console.log(service);
+
+            // console.log(service);
             if (service?.type === 'bike') {
                 const result = await bikeCollection.insertOne(service)
 
