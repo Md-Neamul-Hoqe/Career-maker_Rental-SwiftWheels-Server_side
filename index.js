@@ -42,7 +42,7 @@ async function run() {
         const carCollection = SW_database.collection('cars');
         const bikeCollection = SW_database.collection('bikes');
         const bookingCollection = SW_database.collection('bookings');
-        const serviceCollection = SW_database.collection('services');
+        const testimonialCollection = SW_database.collection('testimonials');
 
         // Send a ping to confirm a successful connection
         await client.db(swiftWheels_DB).command({ ping: 1 });
@@ -68,7 +68,26 @@ async function run() {
             res.send(result)
         })
 
-        /* Get a service */
+        /* Get services of this provider using email excluding the booking in details page */
+        app.get('/api/v1/same-provider-services/:email', async (req, res) => {
+            const email = req.params.email;
+            const { id } = req.query;
+
+            const query = { "provider.email": email, _id: { $ne: new ObjectId(id) } }
+
+            console.log(email, query);
+
+            const bikes = await bikeCollection.find(query).toArray();
+
+            const cars = await carCollection.find(query).toArray();
+
+            // console.log([ ...bikes, ...cars ]);
+
+            /* if not matched send empty array */
+            return res.send([ ...bikes, ...cars ])
+        })
+
+        /* Get a service by ID */
         app.get('/api/v1/services/:id', async (req, res) => {
             const id = req.params.id;
             const { type } = req.query;
@@ -94,12 +113,16 @@ async function run() {
             const { type } = req.query;
             // console.log(id, type);
 
+            const options = {
+                projection: { name: 1, price: 1, img: 1, provider: 1, description: 1 }
+            }
+
             if (type === "bikes") {
-                const result = await bikeCollection.find().limit(4).toArray();
+                const result = await bikeCollection.find({}, options).limit(4).toArray();
                 // console.log(result);
                 return res.send(result)
             }
-            const result = await carCollection.find().limit(4).toArray();
+            const result = await carCollection.find({}, options).limit(4).toArray();
 
             // console.log(result);
 
@@ -133,25 +156,75 @@ async function run() {
             res.send(...result)
         })
 
-        /* booked a service */
+        /* Get the testimonials */
+        app.get('/api/v1/testimonials', async (req, res) => {
+            const result = await testimonialCollection.find().toArray();
+
+            // console.log(result);
+
+            res.send(result)
+        })
+
+        /* Post a testimonial */
+        app.post('/api/v1/testimonials', async (req, res) => {
+            const comment = req.body;
+            const result = await testimonialCollection.insertOne(comment);
+
+            console.log(result);
+
+            res.send(result)
+        })
+
+        /* booked a service [customize for desired solution] */
         app.patch('/api/v1/book-service', async (req, res) => {
             const { bookings } = req.body;
 
-            // console.log(bookings);
-
             const result = await bookingCollection.findOneAndUpdate(
-                {}, // Empty filter object to match the first document
-                { $set: { bookings } }, // Update the "bookings" array
+                {},
+                { $set: { bookings } },
                 { upsert: true }
             );
 
             // console.log(result);
+
             if (result === null) return res.send({ "insertedCount": 1 })
             if (typeof result === 'object') return res.send({ "modifiedCount": 1 })
+
             return res.send(result)
         })
 
+        /* Update service by ID */
+        app.patch('/api/v1/update-service/:id', async (req, res) => {
+            const id = req.params.id;
+            const updatedService = req.body;
+            const { type } = req.query;
 
+            console.log(id);
+
+            const query = { _id: new ObjectId(id) }
+
+            console.log({ ...updatedService });
+
+            if (type === 'bikes') {
+                console.log('hello');
+                const result = await bikeCollection.updateOne(
+                    query,
+                    { $set: { ...updatedService } },
+                );
+
+                console.log(result);
+                return res.send(result)
+            }
+
+            const result = await carCollection.updateOne(
+                query,
+                { $set: { ...updatedService } },
+            );
+            console.log(result);
+
+            return res.send(result)
+
+        })
 
     } finally {
         // Ensures that the client will close when you finish/error
