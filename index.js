@@ -54,7 +54,7 @@ async function run() {
 
             const result = await carCollection.find().toArray();
 
-            console.log(result);
+            // console.log(result);
 
             res.send(result)
         })
@@ -63,14 +63,13 @@ async function run() {
         app.get('/api/v1/bikes', async (req, res) => {
             const result = await bikeCollection.find().toArray();
 
-            console.log(result);
+            // console.log(result);
 
             res.send(result)
         })
 
+        /* Add / Host a service */
         app.post('/api/v1/create-service', async (req, res) => {
-
-
             const service = req.body;
 
             // console.log(service);
@@ -84,6 +83,32 @@ async function run() {
 
             // console.log(result);
             res.send(result)
+        })
+
+        app.get('/api/v1/bookings', async (req, res) => {
+            const result = await bookingCollection.find().toArray();
+
+            console.log(result);
+
+            res.send(result)
+        })
+
+        /* booked a service */
+        app.patch('/api/v1/book-service', async (req, res) => {
+            const { bookings } = req.body;
+
+            console.log(bookings);
+
+            const result = await bookingCollection.findOneAndUpdate(
+                {}, // Empty filter object to match the first document
+                { $set: { bookings } }, // Update the "bookings" array
+                { upsert: true }
+            );
+
+            console.log(result);
+            if (result === null) return res.send({ "insertedCount": 1 })
+            if (typeof result === 'object') return res.send({ "modifiedCount": 1 })
+            return res.send(result)
         })
 
 
