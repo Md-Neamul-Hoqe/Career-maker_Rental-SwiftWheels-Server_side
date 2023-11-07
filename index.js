@@ -3,7 +3,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
-// const jsonwebtoken = require('jsonwebtoken');
+const jsonwebtoken = require('jsonwebtoken');
 
 /* database name */
 const swiftWheels_DB = "swiftWheels-db";
@@ -12,13 +12,34 @@ const app = express();
 
 const port = process.env.PORT || 5000;
 
-app.use(cors())
-// app.use(cors({
-//     origin: [ 'http://localhost:5173' ],
-//     credentials: true
-// }));
+app.use(cors({
+    origin: [ 'http://localhost:5173' ],
+    credentials: true
+}));
 app.use(express.json())
 app.use(cookieParser())
+
+
+const verifyToken = async (req, res, next) => {
+    try {
+        const token = req.cookies?.token;
+
+        // console.log(token);
+
+        if (!token) return res.status(401).send({ message: 'Unauthorized' })
+
+        jsonwebtoken.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+            // console.log(err);
+            if (err) return res.status(401).send({ message: 'Unauthorized' })
+
+            // console.log(decoded);
+            req.user = decoded;
+            next();
+        })
+    } catch (error) {
+        console.log({ error: true, message: error.message });
+    }
+}
 
 // console.log(process.env.swiftWheels_USER, process.env.swiftWheels_PASS, swiftWheels_DB);
 
@@ -47,6 +68,32 @@ async function run() {
         // Send a ping to confirm a successful connection
         await client.db(swiftWheels_DB).command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
+
+
+
+        /* Auth api */
+        app.post('/api/v1/auth/jwt', async (req, res) => {
+            const user = req.body;
+
+            // console.log(user);
+
+            const token = jsonwebtoken.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '24h' })
+
+            res
+                .cookie('token', token, {
+                    httpOnly: true,
+                    secure: false,
+                })
+                .send({ success: true })
+
+        })
+
+        /* user logout then clear cookie */
+        app.post('/api/v1/user/logout', async (req, res) => {
+            // const user = req.body;
+
+            res.clearCookie('token', { maxAge: 0 }).send({ success: true })
+        })
 
         /* Get all cars */
         app.get('/api/v1/cars', async (req, res) => {
