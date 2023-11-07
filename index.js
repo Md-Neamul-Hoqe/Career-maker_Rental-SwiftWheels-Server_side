@@ -1,5 +1,5 @@
 require('dotenv').config()
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
@@ -68,6 +68,27 @@ async function run() {
             res.send(result)
         })
 
+        /* Get a service */
+        app.get('/api/v1/services/:id', async (req, res) => {
+            const id = req.params.id;
+            const { type } = req.query;
+            // console.log(id, type);
+
+            const query = { _id: new ObjectId(id) }
+
+            if (type === "bikes") {
+                const result = await bikeCollection.find(query).toArray();
+                // console.log(result);
+                return res.send(result)
+            }
+            const result = await carCollection.find(query).toArray();
+
+            // console.log(result);
+
+            /* if not matched send empty array */
+            return res.send(result)
+        })
+
         /* Add / Host a service */
         app.post('/api/v1/create-service', async (req, res) => {
             const service = req.body;
@@ -85,19 +106,20 @@ async function run() {
             res.send(result)
         })
 
+        /* Get the bookings */
         app.get('/api/v1/bookings', async (req, res) => {
             const result = await bookingCollection.find().toArray();
 
-            console.log(result);
+            // console.log(result);
 
-            res.send(result)
+            res.send(...result)
         })
 
         /* booked a service */
         app.patch('/api/v1/book-service', async (req, res) => {
             const { bookings } = req.body;
 
-            console.log(bookings);
+            // console.log(bookings);
 
             const result = await bookingCollection.findOneAndUpdate(
                 {}, // Empty filter object to match the first document
@@ -105,7 +127,7 @@ async function run() {
                 { upsert: true }
             );
 
-            console.log(result);
+            // console.log(result);
             if (result === null) return res.send({ "insertedCount": 1 })
             if (typeof result === 'object') return res.send({ "modifiedCount": 1 })
             return res.send(result)
@@ -116,6 +138,7 @@ async function run() {
     } finally {
         // Ensures that the client will close when you finish/error
         // await client.close();
+        console.log("server is running.");
     }
 }
 run().catch(console.dir);
