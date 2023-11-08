@@ -97,7 +97,6 @@ async function run() {
 
         /* Get all cars */
         app.get('/api/v1/cars', async (req, res) => {
-            console.log('carCollection get hilted');
 
             const result = await carCollection.find().toArray();
 
@@ -119,14 +118,26 @@ async function run() {
         app.get('/api/v1/same-provider-services/:email', async (req, res) => {
             const email = req.params.email;
             const { id } = req.query;
+            console.log(email);
 
             const query = { "provider.email": email, _id: { $ne: new ObjectId(id) } }
 
-            console.log(email, query);
+            const options = {
+                projection: {
+                    img: 1,
+                    type: 1,
+                    name: 1,
+                    area: 1,
+                    description: 1,
+                    price: 1,
+                    status: 1,
+                }
+            }
+            // console.log(email, query);
 
-            const bikes = await bikeCollection.find(query).toArray();
+            const bikes = await bikeCollection.find(query, options).toArray();
 
-            const cars = await carCollection.find(query).toArray();
+            const cars = await carCollection.find(query, options).toArray();
 
             // console.log([ ...bikes, ...cars ]);
 
@@ -181,7 +192,7 @@ async function run() {
         app.post('/api/v1/create-service', async (req, res) => {
             const service = req.body;
 
-            // console.log(service);
+            console.log(service);
             if (service?.type === 'bike') {
                 const result = await bikeCollection.insertOne(service)
 
@@ -213,7 +224,7 @@ async function run() {
         })
 
         /* Post a testimonial */
-        app.post('/api/v1/testimonials', async (req, res) => {
+        app.post('/api/v1/post-testimonials', async (req, res) => {
             const comment = req.body;
             const result = await testimonialCollection.insertOne(comment);
 
