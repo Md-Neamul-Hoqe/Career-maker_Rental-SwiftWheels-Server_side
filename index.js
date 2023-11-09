@@ -13,9 +13,10 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 app.use(cors({
-    origin: [ 'http://localhost:5173' ],
+    origin: [ 'http://localhost:5173', "https://furniture-assignment-10.web.app", "https://console.firebase.google.com" ],
     credentials: true
 }));
+
 app.use(express.json())
 app.use(cookieParser())
 
@@ -30,18 +31,17 @@ const verifyToken = async (req, res, next) => {
 
         jsonwebtoken.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
             // console.log(err);
-            if (err) return res.status(401).send({ message: 'Unauthorized' })
+            if (err) return res.status(401).send({ message: 'You are not authorized' })
 
             // console.log(decoded);
             req.user = decoded;
             next();
         })
     } catch (error) {
-        console.log({ error: true, message: error.message });
+        res.send({ error: true, message: error?.message });
     }
 }
 
-// console.log(process.env.swiftWheels_USER, process.env.swiftWheels_PASS, swiftWheels_DB);
 
 const uri = `mongodb+srv://${process.env.swiftWheels_USER}:${process.env.swiftWheels_PASS}@carsdoctordb.pehv7ki.mongodb.net/${swiftWheels_DB}?retryWrites=true&w=majority`;
 
@@ -75,22 +75,26 @@ async function run() {
         app.post('/api/v1/auth/jwt', async (req, res) => {
             const user = req.body;
 
-            // console.log(user);
+            console.log(user);
 
-            const token = jsonwebtoken.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '24h' })
+            if (user?.email) {
+                const token = jsonwebtoken.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' })
 
-            res
-                .cookie('token', token, {
-                    httpOnly: true,
-                    secure: false,
-                })
-                .send({ success: true })
+                return res
+                    .cookie('token', token, {
+                        httpOnly: true,
+                        secure: true,
+                    })
+                    .send({ success: true })
+            }
+            res.send({ message: 'Server Error [JWT]' })
 
         })
 
         /* user logout then clear cookie */
         app.post('/api/v1/user/logout', async (req, res) => {
-            // const user = req.body;
+            const user = req.body;
+            console.log(user);
 
             res.clearCookie('token', { maxAge: 0 }).send({ success: true })
         })
@@ -114,11 +118,28 @@ async function run() {
             res.send(result)
         })
 
-        /* Get services of this provider using email excluding the booking in details page */
+        /* Get services provided by the user */
+        app.get('/api/v1/user/services/:email', verifyToken, async (req, res) => {
+            const email = req?.params?.email;
+
+            if (email !== req?.user?.email) return res.status(403).send({ message: 'Forbidden' })
+
+            const query = { "provider.email": email }
+
+            const bikes = await bikeCollection.find(query).toArray();
+
+            const cars = await carCollection.find(query).toArray();
+
+            console.log([ ...bikes, ...cars ]);
+
+            /* if not matched send empty array */
+            return res.send([ ...bikes, ...cars ])
+        })
+
+        /* Get services of this provider */
         app.get('/api/v1/same-provider-services/:email', async (req, res) => {
             const email = req.params.email;
             const { id } = req.query;
-            console.log(email);
 
             const query = { "provider.email": email, _id: { $ne: new ObjectId(id) } }
 
@@ -147,23 +168,73 @@ async function run() {
 
         /* Get a service by ID */
         app.get('/api/v1/services/:id', async (req, res) => {
-            const id = req.params.id;
-            const { type } = req.query;
-            // console.log(id, type);
+            const id = req.params;
+
+            console.log("Service id: ", id);
 
             const query = { _id: new ObjectId(id) }
 
+            // if (type === "bikes") {
+
+            const result1 = await bikeCollection.find(query).toArray();
+            if (!result1.length) {
+                const result = await carCollection.find(query).toArray();
+
+                console.log(result);
+
+                /* if not matched send empty array */
+                return res.send(result)
+            }
+
+            return res.send(result1)
+        })
+
+        /* Get a service by Title */
+        app.get('/api/v1/filtered-services/:title', async (req, res) => {
+            const { title } = req.params;
+            const { type } = req.query;
+
+            console.log("Service title: ", title);
+
+            const query = { title: { $regex: title, $options: 'i' } }
+
             if (type === "bikes") {
                 const result = await bikeCollection.find(query).toArray();
-                // console.log(result);
+
+                console.log(result);
+
+                /* if not matched send empty array */
                 return res.send(result)
             }
             const result = await carCollection.find(query).toArray();
 
+            console.log(result);
+            return res.send(result)
+        })
+
+        /* get by ids */
+        app.post('/api/v1/services', async (req, res) => {
+            const { ids } = req.body;
+
+            // console.log("Service ids: ", ids);
+
+            const objectIds = ids.map(id => new ObjectId(id))
+
+            const query = { _id: { $in: objectIds } }
+
+            // if (type === "bikes") {
+            const options = {
+                projection: { _id: 1 }
+            }
+
+            const bikes = await bikeCollection.find(query, options).toArray();
             // console.log(result);
+            // }
+            const cars = await carCollection.find(query, options).toArray();
+
 
             /* if not matched send empty array */
-            return res.send(result)
+            return res.send([ ...bikes, ...cars ])
         })
 
         /* find Popular services */
@@ -172,7 +243,7 @@ async function run() {
             // console.log(id, type);
 
             const options = {
-                projection: { name: 1, price: 1, img: 1, provider: 1, description: 1 }
+                projection: { title: 1, price: 1, img: 1, provider: 1, description: 1 }
             }
 
             if (type === "bikes") {
@@ -189,11 +260,13 @@ async function run() {
         })
 
         /* Add / Host a service */
-        app.post('/api/v1/create-service', async (req, res) => {
+        app.post('/api/v1/create-service', verifyToken, async (req, res) => {
             const service = req.body;
 
+            if (service.provider?.email !== req.user?.email) return res.status(403).send({ message: 'Forbidden' })
+
             console.log(service);
-            if (service?.type === 'bike') {
+            if (service?.type === 'bikes') {
                 const result = await bikeCollection.insertOne(service)
 
                 // console.log(result);
@@ -205,13 +278,188 @@ async function run() {
             res.send(result)
         })
 
-        /* Get the bookings */
-        app.get('/api/v1/bookings', async (req, res) => {
-            const result = await bookingCollection.find().toArray();
+
+        /* Update service by ID */
+        app.patch('/api/v1/update-service/:id', async (req, res) => {
+            const { id } = req.params;
+            const { type } = req.query;
+            const updatedService = req.body;
+
+            console.log("Update services: ", id);
+
+            const query = { _id: new ObjectId(id) }
+
+            if (type === 'bikes') {
+                const result = await bikeCollection.updateOne(
+                    query,
+                    { $set: { ...updatedService } },
+                );
+
+                console.log(result);
+                return res.send(result)
+            }
+
+            const result = await carCollection.updateOne(
+                query,
+                { $set: { ...updatedService } },
+            );
+            console.log(result);
+
+            return res.send(result)
+
+        })
+
+        /* delete provided service */
+        app.delete('/api/v1/user/delete-service/:id', verifyToken, async (req, res) => {
+            const { id } = req.params;
+            const { email } = req.query;
+
+            // console.log("Delete service: ", id, email);
+
+            if (email !== req?.user?.email) return res.status(403).send({ message: 'Forbidden' })
+
+            const query = { _id: new ObjectId(id), "provider.email": email };
+
+            const result1 = await bikeCollection.deleteOne(query)
+            if (result1?.data?.deletedCount)
+                return res.send(result1)
+
+            const result = await carCollection.deleteOne(query)
 
             // console.log(result);
+            res.send(result)
+        })
 
-            res.send(...result)
+        /* Get all bookings */
+        app.get('/api/v1/bookings/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+
+            // console.log("Bookings:", email, req.user.email);
+
+            if (email !== req?.user?.email) return res.status(403).send({ message: 'Forbidden' })
+
+            const result = await bookingCollection.find({ "Owner.email": email }).toArray();
+
+            // console.log('Bookings: ', result);
+
+            res.send(result)
+        })
+
+        /* Get a booking by id */
+        app.get('/api/v1/bookings/:id', async (req, res) => {
+            try {
+                const id = req.params.id;
+                const query = { _id: new ObjectId(id) }
+
+                const options = {
+                    projection: {
+                        count: 1
+                    }
+                }
+                console.log("The booking: ", id, query, options);
+
+                const result = await bookingCollection.findOne(query, options);
+
+                // console.log(result);
+
+                res.send(result)
+            } catch (error) {
+                console.log(error);
+                res.status(500).send({ message: 'Internal server error' });
+            }
+        })
+
+        /* delete a booking */
+        app.delete('/api/v1/user/cancel-booking/:id', verifyToken, async (req, res) => {
+            const { id } = req.params;
+            const { email } = req.query;
+
+            // console.log(id, email);
+
+            if (email !== req.user?.email) return res.status(403).send({ message: 'Forbidden' })
+
+            const query = { _id: new ObjectId(id), "Owner.email": email };
+            const result = await bookingCollection.deleteOne(query)
+
+            /* Update Provider schedule */
+            if (result.deletedCount) {
+                const query1 = { _id: new ObjectId(id) }
+                const serviceStatus = {
+                    $set: {
+                        statusInfo: {
+                            status: 'available',
+                            income: null,
+                            schedule: null
+                        }
+                    }
+                }
+
+                const result1 = await bikeCollection.updateOne(
+                    query1,
+                    serviceStatus,
+                );
+
+                if (!result1.modifiedCount) {
+                    await carCollection.updateOne(
+                        query1,
+                        serviceStatus,
+                    );
+                }
+
+                if (result1.modifiedCount) result.driverInformed = true;
+            }
+
+            // console.log(result);
+            res.send(result)
+        })
+
+        /* booked a service [customize for desired solution] */
+        app.patch('/api/v1/update-booking/:id', async (req, res) => {
+            try {
+                const { id } = req.params;
+                const booking = req.body;
+                // booking._id = new ObjectId(id);
+
+                const query = { _id: new ObjectId(id) }
+
+                const Update = {
+                    $set: {
+                        ...booking
+                    }
+                }
+
+                console.log(
+                    "Update booking: ", Update
+                );
+
+                const result = await bookingCollection.updateOne(query, Update, { upsert: true })
+
+
+                // console.log(result);
+
+                return res.send(result)
+            } catch (error) {
+                console.log(error);
+                res.status(500).send({ message: 'Internal server error' });
+            }
+        })
+
+        app.post('/api/v1/book-service', async (req, res) => {
+            try {
+                const booking = req.body;
+                const { id } = req.query;
+
+                booking._id = new ObjectId(id)
+
+                console.log("Book service: ", booking);
+
+                const result = await bookingCollection.insertOne(booking)
+
+                return res.send(result)
+            } catch (error) {
+                console.log(error);
+                res.status(500).send({ message: 'Internal server error' });
+            }
         })
 
         /* Get the testimonials */
@@ -233,56 +481,7 @@ async function run() {
             res.send(result)
         })
 
-        /* booked a service [customize for desired solution] */
-        app.patch('/api/v1/book-service', async (req, res) => {
-            const { bookings } = req.body;
 
-            const result = await bookingCollection.findOneAndUpdate(
-                {},
-                { $set: { bookings } },
-                { upsert: true }
-            );
-
-            // console.log(result);
-
-            if (result === null) return res.send({ "insertedCount": 1 })
-            if (typeof result === 'object') return res.send({ "modifiedCount": 1 })
-
-            return res.send(result)
-        })
-
-        /* Update service by ID */
-        app.patch('/api/v1/update-service/:id', async (req, res) => {
-            const id = req.params.id;
-            const updatedService = req.body;
-            const { type } = req.query;
-
-            console.log(id);
-
-            const query = { _id: new ObjectId(id) }
-
-            console.log({ ...updatedService });
-
-            if (type === 'bikes') {
-                console.log('hello');
-                const result = await bikeCollection.updateOne(
-                    query,
-                    { $set: { ...updatedService } },
-                );
-
-                console.log(result);
-                return res.send(result)
-            }
-
-            const result = await carCollection.updateOne(
-                query,
-                { $set: { ...updatedService } },
-            );
-            console.log(result);
-
-            return res.send(result)
-
-        })
 
     } finally {
         // Ensures that the client will close when you finish/error
